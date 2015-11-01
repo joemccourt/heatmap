@@ -17,7 +17,12 @@ var aggregateSeries = function(series, width, height) {
 		for (var j = 0; j < series.length; j++) {
 			var value = series[j][x]; // TODO: check if exists and interp
 			var yFract = (value - min_y) / y_height;
-			var coordY = yFract * (height-1) + 0.5 | 0;
+			var coordY = yFract * (height-1);
+			if (coordY < -0.5 || coordY >= height) {
+				continue;
+			}
+			coordY = coordY + 0.5 | 0;
+
 			var index = coordX + coordY * width;
 
 			// Aggregate density count
@@ -68,11 +73,14 @@ HM.gameLoop = function(time) {
 
 	if (time - HM.lastFrameTime > HM.maxPeriod) {
 		var ctx = HM.ctx;
-		var width = 101;// + Math.round(100 * Math.sin(time/1000));
-		var height = 101;// + Math.round(100 * Math.cos(time/1000));
-		var s = sine(width, 100, time/3000, 0.5, 0.005);
+		var width = 60;// + Math.round(100 * Math.sin(time/1000));
+		var height = 60;// + Math.round(100 * Math.cos(time/1000));
+		var n = 5000;
+		var s = sine(width, n, time/1000, 0.3, 0.8 / n);
+		// var s = randomWalk(width, n);
+		// var s = noise(width, n);
 		aggregateSeries(s, width, height);
-		var colorScale = 2 * 255 / HM.maxRaster(HM.densityMap);
+		var colorScale = 1 * 255 / HM.maxRaster(HM.densityMap);
 
 		if (!HM.xTransMap) {
 			HM.genTransMapping(width, height);
@@ -136,7 +144,7 @@ HM.rasterByCanvas = function(densityMap, width, height, colorScale) {
 			}
 
 			ctx.fillStyle = 'rgba(0,' + Math.round(colorScale*v) + ',0,1)';
-			ctx.fillRect(xMap[x], yMap[y], xMap[x+1] - xMap[x] + 1, yMap[y+1] - yMap[y] + 1);
+			ctx.fillRect(xMap[x], yMap[y], xMap[x+1] - xMap[x], yMap[y+1] - yMap[y]);
 		}
 	}
 }
