@@ -1,5 +1,5 @@
 
-var aggregateSeries = function(series, width, height) {
+HM.aggregateSeries = function(series, width, height) {
 	var max_y = 1;
 	var min_y = -1;
 
@@ -42,6 +42,48 @@ var aggregateSeries = function(series, width, height) {
 	HM.densityMap = densityMap;
 };
 
+HM.getColor = function(count) {
+	var maxCount = HM.maxCount;
+	var gain = HM.gain;
+	var sat = HM.satColor;
+	var bg = HM.bgColor;
+	var x = gain * count / maxCount;
+
+	var r = Math.round(sat[0]*x - bg[0]*(x-1));
+	var g = Math.round(sat[1]*x - bg[1]*(x-1));
+	var b = Math.round(sat[2]*x - bg[2]*(x-1));
+	var a = Math.round(255*(sat[3]*x - bg[3]*(x-1)));
+
+	// Clamp
+	r = r < 0 ? 0 : r > 255 ? 255 : r;
+	g = g < 0 ? 0 : g > 255 ? 255 : g;
+	b = b < 0 ? 0 : b > 255 ? 255 : b;
+	a = a < 0 ? 0 : a > 255 ? 255 : a;
+
+	return [r,g,b,a];
+};
+
+HM.getColorStrMap = {};
+HM.getColorArrayMap = {};
+HM.getColorArray = function(count) {
+	if (HM.getColorArrayMap[count]) {
+		return HM.getColorArrayMap[count];
+	}
+	var c = HM.getColor(count);
+	HM.getColorArrayMap[count] = c;
+	return c;
+};
+
+HM.getColorStr = function(count) {
+	if (HM.getColorStrMap[count]) {
+		return HM.getColorStrMap[count];
+	}
+	var c = HM.getColor(count);
+	var str = 'rgba('+c[0]+','+c[1]+','+c[2]+','+c[3]/255+')';
+	HM.getColorStrMap[count] = str;
+	return str;
+};
+
 HM.getSeriesAtCoords = function(x, y) {
 	return HM.seriesMap[HM.xTransMap[x]][HM.yTransMap[y]];
 };
@@ -64,7 +106,7 @@ HM.mousemove = function(x,y) {
 		if (series) {
 			console.log(series);
 		} else {
-			console.log("None")
+			console.log("None");
 		}
 	}
 };
@@ -73,19 +115,33 @@ HM.gameLoop = function(time) {
 
 	if (time - HM.lastFrameTime > HM.maxPeriod) {
 		var ctx = HM.ctx;
-		var width = 60;// + Math.round(100 * Math.sin(time/1000));
-		var height = 60;// + Math.round(100 * Math.cos(time/1000));
-		var n = 5000;
-		var s = sine(width, n, time/1000, 0.3, 0.8 / n);
-		// var s = randomWalk(width, n);
-		// var s = noise(width, n);
-		aggregateSeries(s, width, height);
-		var colorScale = 1 * 255 / HM.maxRaster(HM.densityMap);
+		var width = HM.numCols;//60;// + Math.round(100 * Math.sin(time/1000));
+		var height = HM.numRows;//60;// + Math.round(100 * Math.cos(time/1000));
+		var n = HM.numSeries;
+		var t = time * HM.speed;
 
-		if (!HM.xTransMap) {
+		var s;
+		if (HM.funcType === "sine") {
+			s = funGenerator.sine(width, n, t, HM.jitter, HM.phaseOffset / n);
+		} else if (HM.funcType === "randomWalk") {
+			s = funGenerator.randomWalk(width, n);
+		} else if (HM.funcType === "noise") {
+			s = funGenerator.noise(width, n);
+		}
+
+		HM.aggregateSeries(s, width, height);
+		HM.maxCount = HM.maxRaster(HM.densityMap);
+		HM.getColorStrMap = {};
+		HM.getColorArrayMap = {};
+
+		if (!HM.xTransMap || width !== HM.lastWidth || height !== HM.lastHeight) {
 			HM.genTransMapping(width, height);
 		}
-		HM.setRaster(HM.densityMap, width, height, colorScale);
+
+		HM.lastWidth = width;
+		HM.lastHeight = height;
+
+		HM.setRaster(HM.densityMap, width, height);
 
 		HM.frameRenderTime = time - HM.lastFrameTime;
 		HM.lastFrameTime = time;
@@ -105,7 +161,7 @@ HM.maxRaster = function(densityMap) {
 	return max;
 };
 
-HM.rasterByPixel = function(img, densityMap, width, height, colorScale) {
+HM.rasterByPixel = function(img, densityMap, width, height) {
 	var w = HM.w;
 	var h = HM.h;
 	for (var y = 0; y < h; y++) {
@@ -115,16 +171,17 @@ HM.rasterByPixel = function(img, densityMap, width, height, colorScale) {
 			xCoord = HM.xTransMap[x];
 			v = densityMap[xCoord + yCoord];
 
-			img[i] = 0;
-			img[i+1] = colorScale*v;
-			img[i+2] = 0;
-			img[i+3] = 255;
+			var c = HM.getColorArray(v);
+			img[i] = c[0];
+			img[i+1] = c[1];
+			img[i+2] = c[2];
+			img[i+3] = 255 * c[3];
 		}
 	}
 	return img;
 };
 
-HM.rasterByCanvas = function(densityMap, width, height, colorScale) {
+HM.rasterByCanvas = function(densityMap, width, height) {
 	var w = HM.w;
 	var h = HM.h;
 	var ctx = HM.ctx;
@@ -132,7 +189,7 @@ HM.rasterByCanvas = function(densityMap, width, height, colorScale) {
 	var xMap = HM.xTransInvMap;
 	var yMap = HM.yTransInvMap;
 
-	ctx.fillStyle = 'rgba(0,0,0,1)';
+	ctx.fillStyle = HM.getColorStr(0);
 	ctx.fillRect(0, 0, w, h);
 
 	for (var y = 0; y < height; y++) {
@@ -143,7 +200,7 @@ HM.rasterByCanvas = function(densityMap, width, height, colorScale) {
 				continue;
 			}
 
-			ctx.fillStyle = 'rgba(0,' + Math.round(colorScale*v) + ',0,1)';
+			ctx.fillStyle = HM.getColorStr(v);
 			ctx.fillRect(xMap[x], yMap[y], xMap[x+1] - xMap[x], yMap[y+1] - yMap[y]);
 		}
 	}
